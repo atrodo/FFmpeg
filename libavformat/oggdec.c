@@ -215,32 +215,42 @@ static int ogg_replace_stream(AVFormatContext *s, uint32_t serial, char *magic,
     const struct ogg_codec *codec;
     int i = 0;
 
-    if (ogg->nstreams != 1) {
-        avpriv_report_missing_feature(s, "Changing stream parameters in multistream ogg");
-        return AVERROR_PATCHWELCOME;
-    }
-
     /* Check for codecs */
     codec = ogg_find_codec(magic, 8);
+    av_log(s, AV_LOG_INFO, "codec: %s\n", codec->magic);
     if (!codec && !probing) {
         av_log(s, AV_LOG_ERROR, "Cannot identify new stream\n");
         return AVERROR_INVALIDDATA;
     }
 
+    for ( i = 0; i < ogg->nstreams; i++ )
+    {
+        if (ogg->streams[i].codec == codec)
+            break;
+    }
+    if (i >= ogg->nstreams)
+    {
+        avpriv_report_missing_feature(s, "Changing stream parameters in multistream ogg");
+        return AVERROR_PATCHWELCOME;
+    }
     /* We only have a single stream anyway, so if there's a new stream with
      * a different codec just replace it */
-    os = &ogg->streams[0];
-    os->serial  = serial;
-    os->codec   = codec;
-    os->serial  = serial;
-    os->lastpts = 0;
-    os->lastdts = 0;
-    os->start_trimming = 0;
-    os->end_trimming = 0;
+    os = &ogg->streams[i];
+    av_log(s, AV_LOG_INFO, "stream: %d\n", i);
 
-    /* Chained files have extradata as a new packet */
-    if (codec == &ff_opus_codec)
-        os->header = -1;
+    free_stream(s, i);
+
+    memset(os, 0, sizeof(*os));
+    os->serial        = serial;
+    os->bufsize       = DECODER_BUFFER_SIZE;
+    os->buf           = av_malloc(os->bufsize + AV_INPUT_BUFFER_PADDING_SIZE);
+    os->header        = -1;
+    os->start_granule = OGG_NOGRANULE_VALUE;
+    if (!os->buf)
+        return AVERROR(ENOMEM);
+
+    AVStream *st = s->streams[i];
+    av_freep(&st->codecpar->extradata);
 
     return i;
 }
