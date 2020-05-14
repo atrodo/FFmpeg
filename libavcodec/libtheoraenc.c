@@ -170,6 +170,7 @@ static av_cold int encode_init(AVCodecContext* avc_context)
     TheoraContext *h = avc_context->priv_data;
     uint32_t gop_size = avc_context->gop_size;
     int ret;
+    int speed=4;
 
     /* Set up the theora_info struct */
     th_info_init(&t_info);
@@ -251,6 +252,30 @@ static av_cold int encode_init(AVCodecContext* avc_context)
             return ret;
     }
 
+    if(speed>=0){
+      int speed_max;
+      int ret;
+      ret=th_encode_ctl(h->t_state,TH_ENCCTL_GET_SPLEVEL_MAX,
+       &speed_max,sizeof(speed_max));
+      if(ret<0){
+        av_log(avc_context, AV_LOG_WARNING, "Could not determine maximum speed level.\n");
+        speed_max=0;
+      }
+      ret=th_encode_ctl(h->t_state,TH_ENCCTL_SET_SPLEVEL,&speed,sizeof(speed));
+      if(ret<0){
+        av_log(avc_context, AV_LOG_WARNING, "Could not set speed level to %i of %i\n",
+         speed,speed_max);
+        if(speed>speed_max){
+          av_log(avc_context, AV_LOG_WARNING, "Setting it to %i instead\n",speed_max);
+        }
+        ret=th_encode_ctl(h->t_state,TH_ENCCTL_SET_SPLEVEL,
+         &speed_max,sizeof(speed_max));
+        if(ret<0){
+          av_log(avc_context, AV_LOG_ERROR, "Could not set speed level to %i of %i\n",
+           speed_max,speed_max);
+        }
+      }
+    }
     /*
         Output first header packet consisting of theora
         header, comment, and tables.
